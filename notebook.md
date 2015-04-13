@@ -26,6 +26,8 @@
 
 ####2015-04-13
 
++ static 字段的set方法不能为static，否则spring启动报错。
+
 Todo:重建分支，diff
 
 
