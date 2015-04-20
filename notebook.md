@@ -24,10 +24,39 @@
 
 + 修改gedit 3.x的配置，让其支持中文的gsettings命令：gsettings set org.gnome.gedit.preferences.encodings auto-detected "['GB18030', 'UTF-8', 'CURRENT', 'ISO-8859-15', 'UTF-16', 'GBK', 'GB2312', 'BIG5']"。这个亦可用dconf-editor来设置，这个需要安装这个工具，默认是不带的。
 
-####2015-04-13
+###2015-04-13
 
 + static 字段的set方法不能为static，否则spring启动报错。
 
-Todo:重建分支，diff
+###2015-04-14
 
+##### xml文件映射到Object里面如何保证字段的正确性
 
++ 1. 程序员自己保证。 在类org.apache.commons.digester.Digester中设置需要将xml文件转换成的类。
++ 2. XML schema 定义。XML Schema可定义出现在文档中的元素、属性、元素的子元素、元素次序、元素数目，元素和属性的数据类型，元素和属性的默认值固定值等。
+
+###2015-04-16
+
+##### TODO: 为什么用powermock取模拟Thread.currentThread().getContextClassLoader()的getResourceAsStream方法时，会得到多个方法，powermock无法具体确定哪个方法？而直接调用则可以Thread.currentThread().getContextClassLoader().getResourceAsStream(filename)则可以。mock的方法为：method(Thread.currentThread().getContextClassLoader().getClass(), "getResourceAsStream", String.class)
+
+##### Class.getResourceAsStream(filename):如果filename不以/开头则默认是当前类所处的目录查找文件。ClassLoader.getResourceAsStream(filename):不管filename是什么情况都是以根目录开始查找文件的。
++ String.getResourceAsStream("tt.txt"),查找的文件是java/lang/tt.txt
++ String.getClassLoader().getResourceAsStream("tt.txt"),查找的文件是classpath/tt.txt
+
+##### ClassLoader 的目录会往下传递：例如在测试方法中，通过junit对类进行测试，如果被测试类中用当前线程的ClassLoader则是测试类的目录，而不是被测试类的目录。
+
+##### idea中再resources目录下简历目录用xxx.xxx.xxx不会直接生成一个一个的文档目录（xxx/xxx/xxx），而是生成一个目录名为xxx.xxx.xxx的目录文件。
+
+###2015-04-17
+
+##### TODO：PowerMock mock出来的方法，如何控制其调用次数。比如需要单测的方法里面对mock的方法有多次调用，如何精细空着这个调用只发生在部分次数中。
+
+##### TODO：anyObject() 在什么情况下返回null
+
+###2015-04-20
+
+##### PowerMock mock静态私有void方法。
+<pre><code>
+    PowerMockito.spy(StaticClass.class);
+    PowerMockito.doNothing().when(StaticClass.class, "privateMethod");
+</code></pre>
