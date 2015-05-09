@@ -60,3 +60,205 @@
     PowerMockito.spy(StaticClass.class);
     PowerMockito.doNothing().when(StaticClass.class, "privateMethod");
 </code></pre>
+
+###2015-04-21
+
+##### PowerMock mock接口的公有方法。
+<pre><code>
+    public interface Pet{
+        public Boolean doEating(String food);
+    }
+    public class Man {
+        private Pet ownPet;
+        pulic void feedPet(){
+            ownPet.doEating();
+        }
+    }
+    
+    public class ManTest{
+        @Test
+        public void test_feedPet(){
+            Man man = new Man();
+            Class<?> clazz = Man.class;
+            Field field = clazz.getDeclaredField("ownPet");
+            field.setAccessible(true);
+            Pet pet = PowerMockito.mock(Pet.class);//mock类
+            field.set(man, pet);//注入要测试的实例中
+            PowerMockito.when(pet.doEating(Matchers.<String>anyObject())).thenReturn(true);//调用条件，告诉PowerMock在哪里使用，哪里需要mock。
+            man.feedPet();
+            
+        }
+    }
+</code></pre>
+
++ 此例中接口类是私有，没有注入方法，这里采用反射注入。如果有注入方法，则直接注入。
+
+###2015-05-04
+
+#### spring 设置不允许bean名字重定义。
+
++ spring源代码中DefaultListableBeanFactory类有一个allowBeanDefinitionOverriding属性,其默认值为true.　将这个值设置为false就解决bean名字重定义了。
+　
+<pre><code>
+/** Whether to allow re-registration of a different definition with the same name */
+private boolean allowBeanDefinitionOverriding = true;
+
+
+//allowBeanDefinitionOverriding属性在下面代码中起作用:
+synchronized (this.beanDefinitionMap) {
+ Object oldBeanDefinition = this.beanDefinitionMap.get(beanName);
+ if (oldBeanDefinition != null) {
+  if (!this.allowBeanDefinitionOverriding) {
+   throw new BeanDefinitionStoreException(beanDefinition.getResourceDescription(), beanName,
+     "Cannot register bean definition [" + beanDefinition + "] for bean '" + beanName +
+     "': There is already [" + oldBeanDefinition + "] bound.");
+  }
+  else {
+   if (this.logger.isInfoEnabled()) {
+    this.logger.info("Overriding bean definition for bean '" + beanName +
+      "': replacing [" + oldBeanDefinition + "] with [" + beanDefinition + "]");
+   }
+  }
+ }
+ else {
+  this.beanDefinitionNames.add(beanName);
+  this.frozenBeanDefinitionNames = null;
+ }
+ this.beanDefinitionMap.put(beanName, beanDefinition);
+}
+</code></pre>
+
++ 解决方案１：自己写一个继承ContextLoaderListener的listener,比如SpringContextLoaderListener，然后重写方法customizeContext。并在web.xml使用自定义的listener。
+<pre><code>
+public class SpringContextLoaderListener extends ContextLoaderListener {
+ 
+ @Override
+ protected void customizeContext(ServletContext servletContext, ConfigurableWebApplicationContext applicationContext) {
+  super.customizeContext(servletContext, applicationContext);
+  
+  XmlWebApplicationContext context = (XmlWebApplicationContext) applicationContext;
+  context.setAllowBeanDefinitionOverriding(false); //在这里将XmlWebApplicationContext属性allowBeanDefinitionOverriding设置为false,这个属性的值最终
+  //会传递给DefaultListableBeanFactory类的allowBeanDefinitionOverriding属性
+ }
+}
+</code></pre>
+
+
+<pre><code>
+<listener>
+      <listener-class>com.zyr.web.spring.SpringContextLoaderListener</listener-class>
+</listener>
+</code></pre>
+
++ 解决方案２：在org.springframework.web.context.ContextLoader类中找到了CONTEXT_INITIALIZER_CLASSES_PARAM常量,该常量可用于配置spring上下文相关全局特性,该常量在如下代码中起作用:
+
+<pre><code>
+protected List<Class<ApplicationContextInitializer<ConfigurableApplicationContext>>>
+  determineContextInitializerClasses(ServletContext servletContext) {
+
+
+ List<Class<ApplicationContextInitializer<ConfigurableApplicationContext>>> classes =
+   new ArrayList<Class<ApplicationContextInitializer<ConfigurableApplicationContext>>>();
+
+
+   .........
+
+
+ String localClassNames = servletContext.getInitParameter(CONTEXT_INITIALIZER_CLASSES_PARAM);
+ if (localClassNames != null) {
+  for (String className : StringUtils.tokenizeToStringArray(localClassNames, INIT_PARAM_DELIMITERS)) {
+   classes.add(loadInitializerClass(className));
+  }
+ }
+
+
+ return classes;
+}
+</code></pre>
+
+
+创建一个实现接口ApplicationContextInitializer的类，如SpringApplicationContextInitializer,代码如下:
+
+<pre><code>
+public class SpringApplicationContextInitializer implements ApplicationContextInitializer<XmlWebApplicationContext> {
+
+
+ public void initialize(XmlWebApplicationContext applicationContext) {
+  applicationContext.setAllowBeanDefinitionOverriding(false);//在这里将XmlWebApplicationContext属性allowBeanDefinitionOverriding设置为false,这个属
+  //性的值最终会传递给DefaultListableBeanFactory类的allowBeanDefinitionOverriding属性
+ }
+}
+</code></pre>
+
+web.xml中的增加的配置如下:
+
+<pre><code>
+<context-param>
+        <param-name>contextInitializerClasses</param-name>
+        <param-value>com.zyr.web.spring.SpringApplicationContextInitializer</param-value>
+ </context-param>
+</code></pre>
+
+缺点：如果项目在前端使用的是spring mvc时，问题还只解决了一半，即spring根容器(相对使用spring　mvc来说)如果存在同名id或者name时,容器报错停止启动.而spring mvc 的容器是作为子容器来初始化的，所以上述方案2只解决了spring根容器同名id或者name的问题，并没有解决spring mvc子容器的同名id或者name问题。
+
++ 解决方案３：在web.xml文件中的dispatcherServlet配置中增加如下部分配置
+<pre><code>
+<servlet>
+ <servlet-name>dispatcherServlet</servlet-name>
+ <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+ <init-param>
+  <param-name>contextConfigLocation</param-name>
+  <param-value>classpath:spring/spring-mvc.xml</param-value>
+ </init-param>
+ <!--　增加如下配置　-->
+ <init-param>　
+  <param-name>contextInitializerClasses</param-name>
+  <param-value>com.zyr.web.spring.SpringApplicationContextInitializer</param-value> <!--这个类与方案２中的是一个类 -->
+ </init-param>
+ <load-on-startup>1</load-on-startup>
+</servlet>
+</code></pre>
+
+
++ 网上来源：https://github.com/zgmzyr/sameIdOrNameForBeanInSpringTest.git 
+
+
+###2015-05-09
+
+#### nginx安装＋配置＋反向代理tomcat
+
++ 下载nginx，解压缩tar -xvf nginx.tar.gz, 进入nginx目录, 运行./configure检查配置, 运行make, 运行make install. 安装完毕
+
++ 安装遇到 /etc/nginx/nginx.conf, /var/log/nginx/error.log, 和/var/lib/nginx/body目录文件没有的问题。原因是因为我之前将这些目录手动删除了。解决方案：一、将解压缩后文件夹内的conf/nginx.conf复制到/etc/nginx/下。二、手动创建/var/log/nginx/目录。三、手动创建var/lib/nginx/body目录。
+
++ 配置文件更改:将/etc/nginx/nginx.conf文件内的
+<pre>
+<code>
+   location / {
+        root   html;
+        index  index.html index.htm;
+    }
+</code>
+</pre>
+修改成:
+<pre>
+<code>
+   location / {
+        root   html;
+        index  index.html index.htm;
+        proxy_pass http://localhost:8080;
+    }
+</code>
+</pre>
+
+
+
+
+
+
+
+
+
+
+
+
